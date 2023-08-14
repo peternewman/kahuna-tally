@@ -1,0 +1,76 @@
+#!/usr/bin/perl
+
+# GNU GPL v3.0
+# Peter Newman
+
+use strict;
+use warnings;
+use Switch;
+
+use Data::HexDump;
+
+use constant PACKET_SIZE => 24;
+
+# auto-flush
+$| = 1;
+
+my ($infile, $debug) = @ARGV;
+die "Usage: $0 INFILE debug\n" if not $infile;
+
+open my $in, '<', $infile or die;
+binmode $in;
+
+my $raw = '';
+
+while (1) {
+	my $success = read $in, $raw, PACKET_SIZE();
+	die $! unless defined($success);
+	last unless $success;
+	my @data = split(//, $raw);
+	# TODO(Peter): Investigate the other packet types...
+	next unless (ord($data[0]) == 241);
+	if ($debug) {
+		print HexDump($raw);
+		if (scalar(@data) == PACKET_SIZE()) {
+			#"b8 => type, b16 => zero1, b8 => direction, b8 => type, b8 => me, b16 => address, b8 => tally, b8 => maybetally1, b8 => maybetally2, b8 => maybetally3, b8[12]{0}z|str('ascii') => label"
+			print "Type: " . ord($data[0]) . "\n";
+			if ((ord($data[1]) != 0) || (ord($data[2]) != 0)) {
+				print "Zeros are non-zero\n";
+			}
+			print "Direction?: ";
+			switch(ord($data[3])) {
+				case 0	{ print "Input" }
+				case 1	{ print "Output" }
+				else	{ print "unknown (" . ord($data[3]) . ")" }
+			}
+			print "\n";
+			print "Type: ";
+			switch(ord($data[4])) {
+				case 1	{ print "Input" }
+				case 4	{ print "Store" }
+				case 5	{ print "ME" }
+				else	{ print "unknown (" . ord($data[4]) . ")" }
+			}
+			print "\n";
+			print "ME: " . ord($data[5]) . "\n";
+			if (ord($data[6]) != 0) {
+				print "First address byte is non-zero\n";
+			}
+			print "Address: " . ord($data[7]) . "\n";
+			my $tally1 = ord($data[8]);
+			print "Tally1: $tally1 - " . sprintf("%08b", $tally1) . "\n";
+			if ((ord($data[9]) != 0) || (ord($data[10]) != 0) || (ord($data[11]) != 0)) {
+				print "Tally bytes 2-4 are non-zero\n";
+			}
+			print "Label: " . unpack ("Z*", substr($raw, 12)) . "\n";
+		} else {
+			print "Got " . scalar(@data) . " bytes rather than " . PACKET_SIZE() . "\n";
+		}
+		print ("=" x 80);
+		print "\n";
+	} else {
+		print $raw;
+		sleep 1;
+	}
+}
+close $in;
